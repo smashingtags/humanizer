@@ -172,6 +172,7 @@ function humanize(text, opts = {}) {
   return {
     score: analysis.score,
     patternScore: analysis.patternScore,
+    structuralScore: analysis.structuralScore,
     uniformityScore: analysis.uniformityScore,
     reliability: analysis.reliability,
     wordCount: analysis.wordCount,
@@ -352,7 +353,7 @@ function formatSuggestions(result) {
   const bar = '█'.repeat(filled) + '░'.repeat(20 - filled);
   lines.push(`  AI Score: ${result.score}/100  [${bar}]`);
   lines.push(
-    `  Issues: ${result.totalIssues}  |  Pattern: ${result.patternScore}  |  Uniformity: ${result.uniformityScore}`,
+    `  Issues: ${result.totalIssues}  |  Structural: ${result.structuralScore}  |  Pattern: ${result.patternScore}  |  Uniformity: ${result.uniformityScore}`,
   );
   if (result.reliability) {
     lines.push(
@@ -364,7 +365,7 @@ function formatSuggestions(result) {
   if (result.critical.length > 0) {
     lines.push('── CRITICAL (dead giveaways) ───────────────────────');
     for (const s of result.critical) {
-      lines.push(`  L${s.line}: [${s.pattern}] "${truncate(s.text, 60)}" [${s.confidence}]`);
+      lines.push(`  ${s.line ? `L${  s.line  }: ` : ''}[${s.pattern}] "${truncate(s.text, 60)}" [${s.confidence}]`);
       lines.push(`       → ${s.suggestion}`);
     }
     lines.push('');
@@ -373,7 +374,7 @@ function formatSuggestions(result) {
   if (result.important.length > 0) {
     lines.push('── IMPORTANT (noticeable patterns) ─────────────────');
     for (const s of result.important.slice(0, 15)) {
-      lines.push(`  L${s.line}: [${s.pattern}] "${truncate(s.text, 60)}"`);
+      lines.push(`  ${s.line ? `L${  s.line  }: ` : ''}[${s.pattern}] "${truncate(s.text, 60)}"`);
       lines.push(`       → ${s.suggestion}`);
     }
     if (result.important.length > 15) {
@@ -385,7 +386,7 @@ function formatSuggestions(result) {
   if (result.minor.length > 0) {
     lines.push('── MINOR (subtle tells) ────────────────────────────');
     for (const s of result.minor.slice(0, 10)) {
-      lines.push(`  L${s.line}: [${s.pattern}] "${truncate(s.text, 60)}"`);
+      lines.push(`  ${s.line ? `L${  s.line  }: ` : ''}[${s.pattern}] "${truncate(s.text, 60)}"`);
       lines.push(`       → ${s.suggestion}`);
     }
     if (result.minor.length > 10) {
