@@ -8,6 +8,8 @@ Detect and remove signs of AI-generated writing. Makes text sound natural and hu
 
 An [OpenClaw](https://github.com/nichochar/openclaw) skill and standalone CLI tool that scans text for **29 AI writing patterns** using **500+ vocabulary terms** and **statistical text analysis** (burstiness, type-token ratio, readability metrics) — then provides actionable suggestions to fix them.
 
+> **Fork note (smashingtags).** This fork adds a **structural 2026-slop layer** (`src/structural.js`, SITE-154) on top of upstream: antithesis clichés ("X is not Y, it's Z"), aphoristic kickers, trailing -ing clauses, copula inflation, a 2026 blacklist, transition openers, tricolon and burstiness. The density-based pattern score under-weights low-frequency-but-damning tells, so structural slop is blended in as a `max()` floor under the legacy score and run on upstream's quote/code-aware preprocessed text. The `humanize` score line shows a `Structural:` breakdown. The blog quality gate (`/blog`) requires **< 20** with this layer enabled.
+
 Based on [Wikipedia:Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing), [Copyleaks stylistic fingerprint research](https://arxiv.org/abs/2503.01659), and [blader/humanizer](https://github.com/blader/humanizer).
 
 ## Install
