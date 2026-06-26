@@ -16,6 +16,7 @@
 
 const { patterns, wordCount } = require('./patterns');
 const { computeStats, computeUniformityScore } = require('./stats');
+const { analyzeStructural } = require('./structural');
 
 // ─── Category Labels ────────────────────────────────────
 
@@ -25,6 +26,9 @@ const CATEGORY_LABELS = {
   style: 'Style patterns',
   communication: 'Communication artifacts',
   filler: 'Filler & hedging',
+  structural: 'Structural / rhetorical slop',
+  lexical: 'AI-tell vocabulary',
+  cadence: 'Cadence & rhythm',
 };
 
 // ─── Analysis Engine ─────────────────────────────────────
@@ -90,9 +94,34 @@ function analyze(text, opts = {}) {
     }
   }
 
-  // ── Calculate composite score ──────────────────────
+  // ── Legacy density-based pattern score (computed before merging
+  //    structural findings so it stays a pure measure of the 29 detectors) ──
   const patternScore = calculatePatternScore(findings, words);
-  const compositeScore = calculateCompositeScore(patternScore, uniformityScore, findings);
+
+  // ── Structural / lexical / cadence layer ───────────
+  // The density score under-weights low-frequency but damning tells. This
+  // layer scores them on the calibrated 2026-slop scale and feeds findings
+  // into the same pipeline (report + humanize suggestions). Skipped when the
+  // caller restricts analysis to specific legacy pattern IDs.
+  const structural = patternsToCheck
+    ? { slop: 0, aScore: 0, bScore: 0, cScore: 0, sig: {}, findings: [] }
+    : analyzeStructural(trimmed);
+  for (const f of structural.findings) {
+    findings.push(f);
+    if (categoryScores[f.category]) {
+      categoryScores[f.category].matches += f.matchCount;
+      categoryScores[f.category].weightedScore += f.matchCount * f.weight;
+      categoryScores[f.category].patterns.push(f.patternName);
+    }
+  }
+
+  // ── Calculate composite score ──────────────────────
+  const compositeScore = calculateCompositeScore(
+    patternScore,
+    structural.slop,
+    uniformityScore,
+    findings,
+  );
 
   // ── Build category summary ─────────────────────────
   const categories = {};
@@ -111,6 +140,8 @@ function analyze(text, opts = {}) {
   return {
     score: compositeScore,
     patternScore,
+    structuralScore: structural.slop,
+    structural: { a: structural.aScore, b: structural.bScore, c: structural.cScore, sig: structural.sig },
     uniformityScore,
     totalMatches,
     wordCount: words,
@@ -150,21 +181,30 @@ function calculatePatternScore(findings, words) {
 }
 
 /**
- * Composite score combining pattern detection and statistical analysis.
+ * Composite score combining pattern detection, structural slop, and stats.
  *
- * Pattern score is the primary signal (70% weight).
- * Uniformity score adds statistical evidence (30% weight).
- * But only when both are present — stats alone aren't enough.
+ * Two signals, each of which alone is enough to condemn text:
+ *   - legacy: density-weighted pattern matches blended with uniformity
+ *     (70/30), the way the tool always scored. Strong on lexical/phrase slop.
+ *   - structural: the calibrated 2026-slop score (antithesis, kickers,
+ *     -ing tails, blacklist, burstiness…). Catches low-frequency-but-damning
+ *     tells the density score sails past — the whole reason this exists.
+ *
+ * We take the max so neither layer can produce a false green: a kicker-heavy
+ * post with no lexical density still scores its structural slop, and a
+ * blacklist-heavy post with clean rhythm still scores its density.
  */
-function calculateCompositeScore(patternScore, uniformityScore, findings) {
-  if (patternScore === 0 && uniformityScore === 0) return 0;
+function calculateCompositeScore(patternScore, structuralScore, uniformityScore, findings) {
+  if (patternScore === 0 && structuralScore === 0 && uniformityScore === 0) return 0;
 
-  // If no patterns detected, uniformity alone isn't enough to accuse
-  if (findings.length === 0) return Math.min(Math.round(uniformityScore * 0.15), 15);
+  // Legacy blend: patterns dominate, uniformity supplements. With no pattern
+  // findings, uniformity alone isn't enough to accuse.
+  const legacy =
+    findings.length === 0
+      ? Math.min(Math.round(uniformityScore * 0.15), 15)
+      : Math.round(patternScore * 0.7 + uniformityScore * 0.3);
 
-  // Weighted blend: patterns dominate, stats supplement
-  const blended = patternScore * 0.7 + uniformityScore * 0.3;
-  return Math.min(Math.round(blended), 100);
+  return Math.min(Math.max(legacy, Math.round(structuralScore)), 100);
 }
 
 /**
