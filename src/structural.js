@@ -35,16 +35,38 @@ const TRANSITIONS = [
 // ─── Helpers ─────────────────────────────────────────────
 
 /**
- * Strip frontmatter, fenced code, inline code, markdown links and heading
- * marks so we score prose, not artifacts. (The reference scorer skipped
- * fenced code; we strip it too — code legitimately contains "not ... but".)
+ * Reduce markdown to the prose a reader actually sees, so the structural
+ * detectors score writing rather than syntax.
+ *
+ * Division of labour: upstream's prepareText() handles confidence/scan gating
+ * and (when the CLI passes --ignore-code / --ignore-quotes) drops code and
+ * quoted spans. This pass is narrower and deliberately unconditional — the
+ * reference scorer ALWAYS skipped fenced code (it legitimately contains
+ * "not ... but") regardless of any flag, and prepareText never touches
+ * frontmatter, headings, list bullets, or link markup at all. So the code
+ * strip here is a belt-and-braces overlap with prepareText; the markdown
+ * structure strip is unique to this layer. The two do not fight — stripping
+ * an already-stripped code block is a harmless no-op.
+ *
+ * Markers are removed only where they ARE markdown syntax: leading heading or
+ * blockquote marks, or paired emphasis wrapping a span. A bare '#', '>', or '*'
+ * inside prose ("C# perf", "a > b", "3 * 4") is left alone — the old /[#>*]/g
+ * strip mangled all three. Two deliberate non-strips, to match the reference
+ * scorer the corpus is calibrated against:
+ *   - Links are dropped whole (markup, URL, and visible text); keeping link
+ *     text injects bare-URL tokens ("mjashley.com") that distort cadence.
+ *   - List bullets ('-', '+', '*') are LEFT in place. The kicker detector
+ *     excludes sentences containing '-', so a "- short line." bullet is
+ *     correctly not a kicker; stripping the dash would wrongly expose every
+ *     list item as an aphoristic kicker.
  */
 function stripForStructural(text) {
-  let t = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
+  let t = text.replace(/^---\n[\s\S]*?\n---\n?/, ''); // YAML frontmatter
   t = t.replace(/```[\s\S]*?```/g, ' '); // fenced code blocks
   t = t.replace(/`[^`]*`/g, ' '); // inline code
-  t = t.replace(/!?\[[^\]]*\]\([^)]*\)/g, ' '); // images + links
-  t = t.replace(/[#>*]/g, ' '); // heading / quote / emphasis marks
+  t = t.replace(/!?\[[^\]]*\]\([^)]*\)/g, ' '); // links/images (markup + URL + text)
+  t = t.replace(/^[ \t]*(?:#{1,6}|>+)[ \t]+/gm, ' '); // leading heading/quote marks
+  t = t.replace(/(\*{1,3}|_{1,3})(\S[^*_\n]*?\S|\S)\1/g, '$2'); // inline emphasis → keep inner text
   return t;
 }
 
